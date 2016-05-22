@@ -1,8 +1,9 @@
 package main
 
+import "encoding/json"
 import "errors"
 import "fmt"
-//import "github.com/garyburd/redigo/redis"
+import "github.com/garyburd/redigo/redis"
 import "io/ioutil"
 import "os"
 import "regexp"
@@ -14,6 +15,15 @@ func loadData(args []string) error {
 
 	dir := args[0]
 
+	// establish redis connection
+	c, err := redis.Dial("tcp", ":6379")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "loadData: " + err.Error())
+		return errors.New("loadData: could not connect to redis server")
+	}
+	defer c.Close()
+	c.Do("FLUSHDB")
+
 	// get the list of available seasons
 	seasons, err := getSeasons(dir)
 	if err != nil {
@@ -23,7 +33,7 @@ func loadData(args []string) error {
 	// for each season...
 	for _, s := range seasons {
 		// read teams into redis
-		err := readTeams(dir, s)
+		err := readTeams(dir, s, c)
 		if err != nil {
 			return err
 		}
@@ -91,7 +101,41 @@ func getRounds(dir string, season string) ([]string, error) {
 	return rounds, nil
 }
 
-func readTeams(dir string, season string) error {
+func readTeams(dir string, season string, c redis.Conn) error {
+	type team struct {
+		Uuid string
+		Name string
+	}
+
+	path := dir + "/" + season + "/teams.json"
+
+	// read json file
+	file, err := ioutil.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "readTeams: " + err.Error())
+		return errors.New("readTeams: could not read file " + path)
+	}
+
+	// parse json file into list of teams
+	teams := make([]team, 0)
+	err = json.Unmarshal(file, &teams)
+	if err != nil {
+		panic(err)
+	}
+
+	// for each team, add it to redis and to the set of teams for the season
+	for _, t := range teams {
+		c.Send("SET", "team:" + t.Uuid, t.Name)
+		c.Send("SADD", "teams:" + season, "team:" + t.Uuid)
+	}
+	c.Flush()
+
+	// catch all of the responses
+	for i := 0; i < len(teams); i++ {
+		c.Receive()
+		c.Receive()
+	}
+
 	return nil
 }
 
