@@ -13,7 +13,8 @@ func main() {
 	case "load":
 		err := loadData(os.Args[2:])
 		if err != nil {
-			panic(err)
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	}
 }

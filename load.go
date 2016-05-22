@@ -1,5 +1,6 @@
 package main
 
+import "errors"
 import "fmt"
 //import "github.com/garyburd/redigo/redis"
 import "io/ioutil"
@@ -14,12 +15,25 @@ func loadData(args []string) error {
 	dir := args[0]
 
 	// get the list of available seasons
-	seasons := getSeasons(dir)
+	seasons, err := getSeasons(dir)
+	if err != nil {
+		return err
+	}
 
 	// for each season...
 	for _, s := range seasons {
-		fmt.Println("season", s)
-		rounds := getRounds(dir, s)
+		// read teams into redis
+		err := readTeams(dir, s)
+		if err != nil {
+			return err
+		}
+
+		// get list of rounds
+		rounds, err := getRounds(dir, s)
+		if err != nil {
+			return err
+		}
+
 		for _, r := range rounds {
 			fmt.Println("round", r)
 		}
@@ -28,16 +42,17 @@ func loadData(args []string) error {
 	return nil
 }
 
-func getSeasons(dir string) []string {
+func getSeasons(dir string) ([]string, error) {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		fmt.Fprintln(os.Stderr, "getSeasons: " + err.Error())
+		return nil, errors.New("getSeasons: failed to read directory " + dir)
 	}
 
 	r, err := regexp.Compile("^\\d{4}$")
 	if err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, "getSeasons: " + err.Error())
+		return nil, errors.New("getSeasons: regexp compilation failed")
 	}
 
 	var seasons []string
@@ -48,19 +63,20 @@ func getSeasons(dir string) []string {
 		}
 	}
 
-	return seasons
+	return seasons, nil
 }
 
-func getRounds(dir string, season string) []string {
+func getRounds(dir string, season string) ([]string, error) {
 	files, err := ioutil.ReadDir(dir + "/" + season)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		fmt.Fprintln(os.Stderr, "getRounds: " + err.Error())
+		return nil, errors.New("getRounds: failed to read directory " + dir)
 	}
 
 	r, err := regexp.Compile("^round(\\d{2}).json$")
 	if err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, "getRounds: " + err.Error())
+		return nil, errors.New("getRounds: regexp compilation failed")
 	}
 
 	var rounds []string
@@ -72,7 +88,7 @@ func getRounds(dir string, season string) []string {
 		}
 	}
 
-	return rounds
+	return rounds, nil
 }
 
 func readTeams(dir string, season string) error {
