@@ -45,7 +45,10 @@ func loadData(args []string) error {
 		}
 
 		for _, r := range rounds {
-			fmt.Println("round", r)
+			err := readRound(dir, s, r, c)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -139,6 +142,48 @@ func readTeams(dir string, season string, c redis.Conn) error {
 	return nil
 }
 
-func readRound(dir string, season string) error {
+func readRound(dir string, season string, round string, c redis.Conn) error {
+	type teamscore struct {
+		Uuid string
+		Score int
+	}
+
+	type game struct {
+		Date string
+		Uuid string
+		Home teamscore
+		Away teamscore
+		Neutral bool
+	}
+
+	path := dir + "/" + season + "/round" + round + ".json"
+
+	// read json file
+	file, err := ioutil.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "readRound: " + err.Error())
+		return errors.New("readRound: could not read file " + path)
+	}
+
+	// parse json file into list of games
+	games := make([]game, 0)
+	err = json.Unmarshal(file, &games)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, g := range games {
+		c.Send("HMSET", "game:" + g.Uuid,
+			"date", g.Date,
+			"away_uuid", g.Away.Uuid,
+			"away_score", g.Away.Score,
+			"home_uuid", g.Home.Uuid,
+			"home_score", g.Home.Score,
+			"neutral", g.Neutral)
+		c.Send("RPUSH", "games:" + season + ":" + round, "game:" + g.Uuid)
+	}
+	c.Send("RPUSH", "games:" + season, "games:" + season + ":" + round)
+	c.Flush()
+
 	return nil
 }
