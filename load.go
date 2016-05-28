@@ -175,9 +175,9 @@ func readRound(dir string, season string, round string, c redis.Conn) error {
 	for _, g := range games {
 		c.Send("HMSET", "game:" + g.Uuid,
 			"date", g.Date,
-			"away_uuid", g.Away.Uuid,
+			"away_team", "team:" + g.Away.Uuid,
 			"away_score", g.Away.Score,
-			"home_uuid", g.Home.Uuid,
+			"home_team", "team:" + g.Home.Uuid,
 			"home_score", g.Home.Score,
 			"neutral", g.Neutral)
 		c.Send("RPUSH", "games:" + season + ":" + round, "game:" + g.Uuid)
