@@ -44,12 +44,16 @@ func loadData(args []string) error {
 			return err
 		}
 
+		// load the games from each round
 		for _, r := range rounds {
 			err := readRound(dir, s, r, c)
 			if err != nil {
 				return err
 			}
 		}
+
+		// add season to list
+		c.Do("RPUSH", "seasons", s)
 	}
 
 	return nil
